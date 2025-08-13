@@ -1,0 +1,45 @@
+// /api/generate-cover.ts
+import type { VercelRequest, VercelResponse } from '@vercel/node';
+import OpenAI from 'openai';
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+function cors(res: VercelResponse) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+}
+
+export default async function handler(req: VercelRequest, res: VercelResponse) {
+  cors(res);
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Method not allowed' });
+  }
+
+  try {
+    const { prompt, title } = req.body || {};
+    if (!prompt) return res.status(400).json({ error: 'Missing prompt' });
+
+    const size = '1024x1536'; // 2:3 vertical
+    const fullPrompt = `${prompt}\nTypeface: elegant, minimalist. Layout: book cover, centered title: "${title || 'Lunar Workbook'}".`;
+
+    const result = await openai.images.generate({
+      model: 'gpt-image-1',
+      prompt: fullPrompt,
+      size,
+      // You can add more params like 'background', 'style', etc.
+    });
+
+    const b64 = result.data?.[0]?.b64_json;
+    if (!b64) return res.status(502).json({ error: 'OpenAI did not return image data' });
+
+    const imageUrl = `data:image/png;base64,${b64}`;
+    return res.status(200).json({ imageUrl });
+  } catch (err: any) {
+    console.error(err);
+    const status = err?.status || 500;
+    return res.status(status).json({ error: err?.message || 'Server error' });
+  }
+}
